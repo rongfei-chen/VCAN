@@ -10,8 +10,12 @@ These instructions will providee you with a core copy of the VCAN. you can adapt
 
 ### Prerequisites
 What things you need to install the software and how to install them. you can download the [reuqirements.txt](https://drive.google.com/file/d/17iI_7iU2VYjPoos_vOjsOtGWZcYNNNvE/view?usp=sharing) to install the repated packages.
+The list of some important installation packages is as follows:
+
 ```
---
+--emd==0.4.0
+--librosa==0.8.1
+--scikit-learn==0.24.2
 ```
 
 ## Test demo
