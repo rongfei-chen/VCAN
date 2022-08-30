@@ -20,9 +20,24 @@ The list of some important installation packages is as follows:
 ```
 
 ## Running the tests
-You must run the AFMM and the CMSM in order after installing the aforementioned packages. 
-As shown in Figure 1 in the paper, the output of AFMM is part of the input of CMSM, thus 
+We only provide the core code of the model, but for the data preprocessing and classification network part of the code is not available. If you need the corresponding demos, please refer to this [repository](https://github.com/WZMIAOMIAO/deep-learning-for-image-processing)
 
+As shown in Fig.1. in the paper, the output of AFMM is part of the input of CMSM, you must run the AFMM and the CMSM in order after installing the aforementioned packages, i.e.,
+
+1. data pre-processing. the adjustment of data types, data structures and  corresponding labels.
+2. Run the AFMM to generate three MEL-spectrams (three kinds of audio feature sequences), which is the acoustic feature input part of CMSM.
+3. Run the CMSM and output the filtered video keyframes
+4. Classify video keyframes (images) using designed classifiers or a cooperative classifier group.
+
+### Dataset 
+
+1. [RAVDESS](https://zenodo.org/record/1188976#.YFZuJ0j7SL8)
+2. [CMU-MOSI](http://multicomp.cs.cmu.edu/resources/cmu-mosi-dataset/)
+3. [CMU-MOSEI](http://multicomp.cs.cmu.edu/resources/cmu-mosei-dataset/)
+
+## Note
+
+1.
 
 ## citation
 
@@ -37,52 +52,4 @@ If you think the data set and code we collate are helpful for your research, ple
   publisher={IEEE}
 }
 
-
 ```
-
-## Running the tests
-
-The encrypted code available for testing can be downloaded.
-You can use this [https URL](https://cloud.189.cn/t/uaeeiavmuQ3u)（访问码：n3n7) or [pCloud URL](https://u.pcloud.link/publink/show?code=XZQr58VZRzrGxsst1yJoCA8WoKEs3SXMLoU7) to download the algorithm demo.   
-
-## Images displayed in paper
-
-20 images displayed in the paper can be downloaded at this [https URL](https://cloud.189.cn/web/share?code=qymAJzayuei2)（访问码：mgj4）or [pCloud URL](https://u.pcloud.link/publink/show?code=XZCNfHVZ4MYNMM5C8Buy29FaHGdDJh6tSYzV) (size = 13.51MB). 
-
-
-## Modified version of HDR dataset
-
-250 pairs of images in HDR dataset can be downloaded at this [https URL](https://cloud.189.cn/web/share?code=NZ7ZZbjeuAVz) or [pCloud URL](https://u.pcloud.link/publink/show?code=XZ2NfHVZChgPglepTRLgNkuMHbULgB9Ja2bV) (size = 352MB).
-
-The zip file contains two folders, the 'lowlight' folder and the 'Refimg' folder.
-
-'lowlight' folder contains 250 images under low light.
-
-'Refimg' folder contains 250 images under normal light.
-
-Note: 
-
-1.Please do not change the serial number of the images. They correspond to each other. e.g.  'HDRR(1).PNG' is the reference image under normal illumination of 'HDRL(1).PNG'.
-
-2.Please [click this address](https://live.ece.utexas.edu/research/HDRDB/hdr_index.html) to see more about the original HDR dataset.
-
-
-## citation
-
-If you think the data set and code we collate are helpful for your research, please cite:
-
-```
-
-@article{CDEF,
-  title={Low-light Image Enhancement Using the Cell Vibration Model},
-  author={Xiaozhou Lei, Zixiang Fei, Wenju Zhou, Huiyu Zhou and Minrui Fei},
-  journal={IEEE Transactions on Multimedia},
-  year={2022}
-  month={05}
-  day={19}
-  doi={10.1109/TMM.2022.3175634}
-}
-
-
-```
-
