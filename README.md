@@ -1,13 +1,16 @@
 # Video-based Cross-modal Auxiliary Network for Multimodal Sentiment Analysis
 The video-based cross-modal auxiliary network (VCAN) consists of two components: the Audio Feature Map Module (AFMM), which enhances multi-scale acoustic sentiment representation; and the Cross-Modal Selection Module (CMSM), which aims to improve the interactivity of audiovisual modalities and eliminate redundant computations.
 
+Code for the paper Video-based Cross-modal Auxiliary Network for Multimodal Sentiment Analysis(https://ieeexplore.ieee.org/document/9852463)
+![Fig 1  The overall framework of the Video-based Cross-modal Auxiliary Network (VCAN)](https://user-images.githubusercontent.com/50829408/187387055-3fb21d0b-fcbf-4f5d-b76f-ebfed7aea032.png)
+
 ## Gettinf Started
 These instructions will providee you with a core copy of the VCAN. you can adapt it and run on your local machine for development and testing purposes. This model runs on a Windows system using the PyCharm Community Edition. See deployment for notes on how to deploy the project on a live system.
 
 ### Prerequisites
 What things you need to install the software and how to install them
 ```
-Give examples
+--
 ```
 
 ## Test demo
