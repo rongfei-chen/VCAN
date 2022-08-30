@@ -8,7 +8,7 @@ Code for the TCSVT paper [Video-based Cross-modal Auxiliary Network for Multimod
 ## Gettinf Started
 These instructions will providee you with a core copy of the VCAN. you can adapt it and run on your local machine for development and testing purposes. This model runs on a Windows system using the PyCharm Community Edition. See deployment for notes on how to deploy the project on a live system.
 
-### Prerequisites
+### Prerequisites and Installing
 What things you need to install the software and how to install them. you can download the [reuqirements.txt](https://drive.google.com/file/d/17iI_7iU2VYjPoos_vOjsOtGWZcYNNNvE/view?usp=sharing) to install the repated packages.
 The list of some important installation packages is as follows:
 
@@ -16,15 +16,34 @@ The list of some important installation packages is as follows:
 --emd==0.4.0
 --librosa==0.8.1
 --scikit-learn==0.24.2
+...
 ```
 
-## Test demo
+## Running the tests
+You must run the AFMM and the CMSM in order after installing the aforementioned packages. 
+As shown in Figure 1 in the paper, the output of AFMM is part of the input of CMSM, thus 
+
+
+## citation
+
+If you think the data set and code we collate are helpful for your research, please cite:
+
+```
+@article{chen2022video,
+  title={Video-based Cross-modal Auxiliary Network for Multimodal Sentiment Analysis},
+  author={Chen, Rongfei and Zhou, Wenju and Li, Yang and Zhou, Huiyu},
+  journal={IEEE Transactions on Circuits and Systems for Video Technology},
+  year={2022},
+  publisher={IEEE}
+}
+
+
+```
+
+## Running the tests
+
 The encrypted code available for testing can be downloaded.
 You can use this [https URL](https://cloud.189.cn/t/uaeeiavmuQ3u)（访问码：n3n7) or [pCloud URL](https://u.pcloud.link/publink/show?code=XZQr58VZRzrGxsst1yJoCA8WoKEs3SXMLoU7) to download the algorithm demo.   
-
-Updated on 6, June, 2022: a function script was added.
-
-Updated on 16, July, 2022: scripts related to fast guided filter algorithm were added.
 
 ## Images displayed in paper
 
