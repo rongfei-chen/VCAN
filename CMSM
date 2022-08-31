@@ -1,0 +1,38 @@
+from Image_Selecting import Image_from_Video, Voice_to_Image_index
+import os
+import numpy as np
+
+"""
+This is the test demo of the CMSM, please adjust the data path by the user for complete operation
+Parameter Description:
+    initialization
+    :param Final_imfwav_path: The input path to CMSM, which is the same as the AFMM output path
+    :param Videos_path: Video input path
+    :param image_save_path: The output (images) save path of CMSM
+
+"""
+
+imfwav_filenames = os.listdir(Final_imfwav_path)
+video_filenames = os.listdir(Videos_path)
+
+for video_index in video_filenames:
+    Temp_name = video_index.split('.')[:-1]
+    Video_name = ''.join(Temp_name)
+    Frame_id_list = []
+    index_name = []
+    for Imf_wav_index in imfwav_filenames:
+        Wav_name = Imf_wav_index.split('-')[0]
+        if Video_name == Wav_name:
+            ID_list = Voice_to_Image_index(Final_imfwav_path, Imf_wav_index)
+            # ID_array = ID_list.reshape(-1)
+            index_name.append(Imf_wav_index)
+            Frame_id_list.append(ID_list)
+        else:
+            pass
+    ID_frame = np.unique(Frame_id_list)
+    V_Path = os.path.join(Videos_path, video_index)
+    Image_from_Video(V_Path, image_save_path, ID_frame, Video_name)
+    imfwav_filenames = list(set(imfwav_filenames) - set(index_name))
+    print("complete video: %s" % video_index)
+
+
