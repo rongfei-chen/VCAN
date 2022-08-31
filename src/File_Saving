@@ -1,0 +1,56 @@
+import os
+import soundfile as sf
+import cv2
+from PIL import Image
+
+
+def write_file(file_path, input_data, rate=22050, subtype="PCM_16"):
+    sf.write(file_path, input_data, samplerate=rate, subtype=subtype)
+
+
+def write_imf_file(file_path, IMFs, count, index):
+    imf_col, imf_row = IMFs.shape
+    temp_name = index.split('.')[:-1]
+    index_name = ''.join(temp_name)
+    for i in range(imf_col):
+        var_name = index_name + '-' + str(count) + '-imf' + str(i) + '.wav'
+        var_value = IMFs[i, :]
+        write_path = os.path.join(file_path, var_name)
+        write_file(write_path, var_value)
+
+
+def write_imf_file1(file_path, IMFs, count, j):
+        var_name = str(count) + '-imf-' + str(j) + '.wav'
+        write_path = os.path.join(file_path, var_name)
+        write_file(write_path, IMFs)
+        return write_path
+
+
+def text_save(filename, data):  
+    file = open(filename,'a')
+    for i in range(len(data)):
+        s = str(data[i]).replace('[','').replace(']','')  
+        s = s.replace("'",'').replace(',','') + '\n'      
+        file.write(s)
+    file.close()
+
+
+def save_image(image, addr, num, videoname):
+    var_name = videoname + '-' + str(num) + '.jpg'
+    address = os.path.join(addr, var_name)
+    # address = addr + str(num) + '.jpg'
+    cv2.imwrite(address, image)
+
+
+def ResizeImage(filein, fileout, width, height, type):
+    """
+    filein: input images
+    fileout: output images
+    width: the width of the output image
+    height:the height of the output image
+    type: the type of output image（e.g., png, gif, jpeg...）
+    """
+    img = Image.open(filein)
+    out = img.resize((width, height), Image.ANTIALIAS)
+    out.save(fileout, type)
+
