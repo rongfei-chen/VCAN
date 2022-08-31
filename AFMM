@@ -4,7 +4,7 @@ import os
 from File_Saving import write_file, text_save, write_imf_file, write_imf_file1
 
 """
-This is the test demo of the model, please adjust the data path by the user for complete operation
+This is the test demo of the AFMM, please adjust the data path by the user for complete operation
 Parameter Description:
     initialization
     :param Audio_signals_path: Input a .wav audio file, or a file format supported by openSMILE
