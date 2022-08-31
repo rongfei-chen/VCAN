@@ -5,8 +5,8 @@ Code for the TCSVT paper [Video-based Cross-modal Auxiliary Network for Multimod
 
 ![Fig 1  The overall framework of the Video-based Cross-modal Auxiliary Network (VCAN)](https://user-images.githubusercontent.com/50829408/187387055-3fb21d0b-fcbf-4f5d-b76f-ebfed7aea032.png)
 
-## Gettinf Started
-These instructions will providee you with a core copy of the VCAN. you can adapt it and run on your local machine for development and testing purposes. This model runs on a Windows system using the PyCharm Community Edition. See deployment for notes on how to deploy the project on a live system.
+## Getting Started
+These instructions will providee you with a core copy of the VCAN. you can adapt it and run on your local machine for development and testing purposes. This model runs on a Windows system using the PyCharm Community Edition. See following deployment for notes on how to deploy the project on a live system.
 
 ### Prerequisites and Installing
 What things you need to install the software and how to install them. you can download the [reuqirements.txt](https://drive.google.com/file/d/17iI_7iU2VYjPoos_vOjsOtGWZcYNNNvE/view?usp=sharing) to install the repated packages.
