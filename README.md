@@ -43,7 +43,7 @@ You need to declare the related citations if you use the following datasets as b
 2. The cooperative classifier group mentioned in our paper is consisted of different CNN models, and users can retrieve the source code from the corresponding papers or refer to this [URL](https://github.com/WZMIAOMIAO/deep-learning-for-image-processing).
 3. If you have any questions about using VCAN, please contact me by email (chenrongfei@shu.edu.cn) 
 
-## citation
+## Citation
 
 If you think the data set and code we collate are helpful for your research, please cite:
 
