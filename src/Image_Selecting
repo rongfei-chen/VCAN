@@ -1,0 +1,50 @@
+import os
+import cv2
+import numpy as np
+from acoustic_feature import Spectrogram
+from File_Saving import save_image
+
+
+def Image_from_Video(video_path, image_save_path, image_frame_id, videoname):
+    video_capture = cv2.VideoCapture(video_path)  
+    success, frame = video_capture.read()  
+    index = 0
+    while success:
+        if index in image_frame_id:
+            save_image(frame, image_save_path, index, videoname)
+            # print('save image:', index)
+            index = index + 1
+            success, frame = video_capture.read()
+        else:
+            index = index + 1
+            success, frame = video_capture.read()
+
+
+def Voice_to_Image_index(file_path, index):
+    # file_path = r"D:\code\MSA\Cluster_feature"
+    image_frame_id = []
+    for i in range(3):
+        wave_name = os.path.join(file_path, index)
+        spectrogram_f = Spectrogram(wave_name)
+        # temp_power = spectrogram_f.get_magnitude_spectrogram()
+        # Tp_row, _ = temp_power.size()
+        temp_mel = spectrogram_f.get_mel_spectrogram()  # 26*227
+        tm_row, tm_col = temp_mel.shape
+        score = list()
+        for j in range(tm_col):
+            rep_temp = temp_mel[:, j]
+            max_tm = np.max(rep_temp)
+            mean_tm = np.mean(rep_temp)
+            var_tm = np.var(rep_temp)
+            sum_tm = np.sum(rep_temp)
+            alpha = mean_tm / sum_tm
+            beta = max_tm / sum_tm
+            score.append(format((var_tm ** (alpha + beta)), '.3f'))
+        sorted_value = sorted(score, reverse=True)
+        sorted_id = sorted(range(len(score)), key=lambda k: score[k], reverse=True)
+        # Determine the ID of the extracted image in the video based on the location of audio frames 
+        #(e.g., the mapping relationship is: 227-90, i.e., approximately a 2.5:1 correspondence, i.e., frame 10 of the audio corresponds to frame 4 of the video)
+        # We selected the top 10 frames of sorted_id, i.e., a total of 10 images were extracted (subject to arbitrary modifications)
+        image_temp = [int(i / 2.5) for i in sorted_id[0:10]]
+        image_frame_id.append(image_temp)
+    return np.array(image_frame_id)
