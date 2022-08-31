@@ -31,13 +31,16 @@ As shown in Fig.1. in the paper, the output of AFMM is part of the input of CMSM
 
 ### Dataset 
 
+You need to declare the related citations if you use the following datasets as benchmark datasets for your papers
+
 1. [RAVDESS](https://zenodo.org/record/1188976#.YFZuJ0j7SL8)
 2. [CMU-MOSI](http://multicomp.cs.cmu.edu/resources/cmu-mosi-dataset/)
 3. [CMU-MOSEI](http://multicomp.cs.cmu.edu/resources/cmu-mosei-dataset/)
 
 ## Note
 
-1.
+1. We provide a simple [demo](https://drive.google.com/drive/folders/1NoRldhJbrmzzt7Fnn7rmMT-x42k3ACtY?usp=sharing) of the basic raw data pre-processing so that users can easily adjust the data structure.
+2. The cooperative classifier group mentioned in our paper is consisted of different CNN models, and users can retrieve the source code from the corresponding papers or refer to this [URL](https://github.com/WZMIAOMIAO/deep-learning-for-image-processing).
 
 ## citation
 
