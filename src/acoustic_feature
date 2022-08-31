@@ -1,0 +1,946 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# Copyright (c) 2020. ZZL
+# @Time     : 2020/4/27
+# @Author   : ZL.Z
+# @Reference: None
+# @Email    : zzl1124@mail.ustc.edu.cn
+# @FileName : acoustic_feature.py
+# @Software : Python3.6;PyCharm;Windows10
+# @Hardware : Intel Core i7-4712MQ;NVIDIA GeForce 840M
+# @Version  :  V1.1: 2020/5/15
+# @License  : GPLv3
+# @Brief    : acoustic feature extraction
+import os
+import subprocess
+import numpy as np
+import librosa
+import librosa.display
+from scipy.signal import lfilter, get_window
+from scipy.stats import skew, kurtosis
+import soundfile as sf
+import matplotlib
+import matplotlib.pyplot as plt
+import matplotlib.ticker as mtick
+from mpl_toolkits.axes_grid1 import host_subplot
+import mpl_toolkits.axisartist as AA
+
+
+
+matplotlib.rcParams['font.sans-serif'] = ['SimHei'] 
+matplotlib.rcParams['axes.unicode_minus'] = False  
+
+
+def _print(bl=True, s=None):
+    if bl:
+        print(s)
+    else:
+        pass
+
+
+def func_format(x, pos):
+    return "%d" % (1000 * x)
+
+
+class OpenSmileFeatureSet:
+    """Feature extraction with openSmile tool"""
+    dft_feature_file_save_path = os.getcwd()  
+
+    def __init__(self, input_file):
+        """
+        :param input_file: Import a .wav audio file, or a file format supported by openSMILE
+        """
+        self.openSmile_path = r"./openSMILE"
+        self.input_file = input_file
+        self.eGeMAPSv01a = r"./config/gemaps/eGeMAPSv01a.conf"  # 2016-eGeMAPS，88 features
+        self.ComParE_2016 = r"./config/ComParE_2016.conf"  # 2016-ComParE，6373 feastures
+        self.IS09_emotion = r"./config/IS09_emotion.conf"  # 2009-InterSpeech Emotion Challenge，384 features
+
+    def feature_extraction(self, config_file, output_file):
+        """
+        Feature extraction with openSmile tool
+        :param config_file: Configuration file
+        :param output_file: output .csv file. ('-O', default ARFF format), modify the "-O" command to output the file formats supported by openSMILE
+        :return: None
+        """
+        cmd = "SMILExtract -noconsoleoutput -C %s -I %s -O %s" % (config_file, self.input_file, output_file)
+        subprocess.run(cmd, cwd=self.openSmile_path, shell=True)
+
+    def get_eGeMAPS(self, output_file=os.path.join(dft_feature_file_save_path, "eGeMAPS.csv")):
+        """
+        Extraction of 88-dimensional features from the eGeMAPS feature set, as detailed in the conference proceedings（2016 IEEE trans on Affective Computing)：
+        https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=7160715
+        :param output_file: output .csv file. ('-O', default ARFF format), modify the "-O" command to output the file formats supported by openSMILE
+        :return: 88-dimensional features
+        """
+        self.feature_extraction(self.eGeMAPSv01a, output_file)
+        features = self.feature_file_reader(output_file)
+        return features
+
+    def get_ComParE(self, output_file=os.path.join(dft_feature_file_save_path, "ComParE_2016.csv")):
+        """
+        Extraction of 6373-dimensional features from the ComParE_2016 feature set, as detailed in the conference proceedings（2016 Computational Paralinguistics ChallengE)：
+        https://www.isca-speech.org/archive/Interspeech_2016/pdfs/0129.PDF
+        https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3664314/
+        :param output_file: output .csv file. ('-O', default ARFF format), modify the "-O" command to output the file formats supported by openSMILE
+        :return: 6373-dimensional features
+        """
+        self.feature_extraction(self.ComParE_2016, output_file)
+        features = self.feature_file_reader(output_file)
+        return features
+
+    def get_IS09(self, output_file=os.path.join(dft_feature_file_save_path, "IS09_emotion.csv")):
+        """
+        Extraction of 384-dimensional features from the IS09_emotion feature set, as detailed in the conference proceedings (The INTERSPEECH 2009 Emotion Challenge)
+        https://www.isca-speech.org/archive/archive_papers/interspeech_2009/papers/i09_0312.pdf
+        :param output_file: output .csv file. ('-O', default ARFF format), modify the "-O" command to output the file formats supported by openSMILE
+        :return: 384-dimensional features
+        """
+        self.feature_extraction(self.IS09_emotion, output_file)
+        features = self.feature_file_reader(output_file)
+        return features
+
+    @staticmethod
+    def feature_file_reader(feature_f):
+        """
+        Read feature values from the generated ARFF format csv feature file
+        :param feature_f: ARFF format csv feature file
+        :return: features
+        """
+        with open(feature_f) as f:
+            last_line = f.readlines()[-1] 
+        features = last_line.split(",")
+        features = np.array(features[1:-1], dtype="float64")  
+        return features
+
+
+class Spectrogram:
+    """spectrogram (speech spectrogram) characteristics"""
+    def __init__(self, input_file, sr=None, frame_len=512, n_fft=None, win_step=2 / 3, window="hamming", preemph=0.97):
+        """
+        initialization
+        :param input_file: input audio files
+        :param sr: audio sampling rate
+        :param frame_len: Frame length, default 512 samples (32ms, 16kHz), same as window length
+        :param n_fft:  The length of the FFT window, by default the same as the window length
+        :param win_step: Window shift, default shift 2/3, 512*2/3=341 samples (21ms,16kHz)
+        :param window:  Window type, default Hamming window
+        :param preemph: Pre-weighting factor, default 0.97
+        """
+        self.input_file = input_file
+        self.wave_data, self.sr = librosa.load(self.input_file, sr=sr)  
+        self.wave_data = librosa.effects.preemphasis(self.wave_data, coef=preemph)  
+        self.window_len = frame_len  
+        if n_fft is None:
+            self.fft_num = self.window_len  
+        else:
+            self.fft_num = n_fft
+        self.hop_length = round(self.window_len * win_step)  # Overlap sampling points are set to 1/3 (1/3~1/2) of the window length, i.e. frame shift (window shift) 2/3
+        self.window = window
+
+    def get_magnitude_spectrogram(self):
+        """
+        Get the amplitude spectrum: taking the absolute value
+        :return: np.ndarray[shape=(1 + n_fft/2, n_frames), dtype=float32]，（257，Total sampling points/(512*2/3)+1）
+        """
+        # Spectrum matrix: number of rows = 1 + n_fft/2 = 257, number of columns = number of frames n_frames = all samples/(512*2/3) + 1 (rounded up)
+        # Fast Fourier Transformation + Hamming Window
+        mag_spec = np.abs(librosa.stft(self.wave_data, n_fft=self.fft_num, hop_length=self.hop_length,
+                                       win_length=self.window_len, window=self.window))
+        return mag_spec
+
+    def get_power_spectrogram(self):
+        """
+        Obtain the power spectrum (energy spectrum): amplitude spectrum squared
+        :return: np.ndarray[shape=(1 + n_fft/2, n_frames), dtype=float32]，（257，Total sampling points/(512*2/3)+1）
+        """
+        pow_spec = np.square(self.get_magnitude_spectrogram())
+        return pow_spec
+
+    def get_log_power_spectrogram(self):
+        """
+        Get log-scale power spectrum (energy spectrum): amplitude spectrum squared S (also known as power spectrum),
+        10 * log10(S / ref), where ref is specified as the maximum value of S
+        :return: np.ndarray[shape=(1 + n_fft/2, n_frames), dtype=float32]，（257，Total sampling points/(512*2/3)+1）
+        """
+        log_pow_spec = librosa.amplitude_to_db(self.get_magnitude_spectrogram(), ref=np.max) 
+        return log_pow_spec
+
+    def get_mel_spectrogram(self, n_mels=26):
+        """
+        Get Mel Spectrum::
+        :param n_mels:  The number of filters in the Mel filter bank, default 26
+        :return: np.ndarray[shape=(n_mels, n_frames), dtype=float32]，（26，Total sampling points/(512*2/3)+1）
+        """
+        # Spectrum matrix: number of rows = n_mels = 26, number of columns = number of frames n_frames = all sampling points / (512*2/3) + 1 (rounded up)
+        # Fast Fourier variation + Hamming window, number of filters for Mel filter bank = 26
+        mel_spec = librosa.feature.melspectrogram(self.wave_data, self.sr, n_fft=self.fft_num,
+                                                  hop_length=self.hop_length, win_length=self.window_len,
+                                                  window=self.window, n_mels=n_mels)
+        log_mel_spec = librosa.power_to_db(mel_spec)  
+        return log_mel_spec
+
+    def plot(self, fig=None, show=True, **kwargs):
+        """
+        plot the sound spectrum
+        :param fig: Specify what kind of sound spectrum is plotted, mag/pow/log_pow/mel, all by default
+        :param show: The default final call to plt.show() displays the graph
+        :return: None
+        """
+        plt.figure(figsize=(8, 6))
+        if fig == "mag":
+            mag_spec = self.get_magnitude_spectrogram()
+            librosa.display.specshow(mag_spec, sr=self.sr, hop_length=self.hop_length, x_axis="s", y_axis="linear")
+            plt.title("Magnitude Spectrogram")
+            plt.xlabel("Time/ms")
+            plt.ylabel("Frequency/Hz")
+            plt.gca().xaxis.set_major_formatter(mtick.FuncFormatter(func_format))
+            plt.colorbar(shrink=0.7)
+        elif fig == "pow":
+            pow_spec = self.get_power_spectrogram()
+            librosa.display.specshow(pow_spec, sr=self.sr, hop_length=self.hop_length, x_axis="s", y_axis="linear")
+            plt.title("Power Spectrogram")
+            plt.xlabel("Time/ms")
+            plt.ylabel("Frequency/Hz")
+            plt.gca().xaxis.set_major_formatter(mtick.FuncFormatter(func_format))
+            plt.colorbar(shrink=0.7)
+        elif fig == "log_pow":
+            log_pow_spec = self.get_log_power_spectrogram()
+            librosa.display.specshow(log_pow_spec, sr=self.sr, hop_length=self.hop_length, x_axis="s", y_axis="log")
+            plt.title("Log-Power Spectrogram")
+            plt.xlabel("Time/ms")
+            plt.ylabel("Frequency/Hz")
+            plt.gca().xaxis.set_major_formatter(mtick.FuncFormatter(func_format))
+            plt.colorbar(shrink=0.7, format="%+02.0f dB")
+        elif fig == "mel":
+            mel_spec = self.get_mel_spectrogram(**kwargs)
+            librosa.display.specshow(mel_spec, sr=self.sr, hop_length=self.hop_length, x_axis="s", y_axis="mel")
+
+            plt.xlabel("Time/ms")
+            plt.ylabel("Frequency/Hz")
+            plt.yticks(fontproperties='Times New Roman', size=12)
+            plt.gca().xaxis.set_major_formatter(mtick.FuncFormatter(func_format))
+            plt.title("Log-Mel Spectrogram")
+            plt.xticks(fontproperties='Times New Roman', size=12)
+            plt.colorbar(shrink=0.7, format="%+02.0f dB")
+        else:
+            plt.figure(figsize=(16, 8))
+            plt.subplot(2, 2, 1)
+            mag_spec = self.get_magnitude_spectrogram()
+            librosa.display.specshow(mag_spec, sr=self.sr, hop_length=self.hop_length, x_axis="s", y_axis="linear")
+            plt.title("Magnitude Spectrogram")
+            plt.xlabel("Time/ms")
+            plt.ylabel("Frequency/Hz")
+            plt.gca().xaxis.set_major_formatter(mtick.FuncFormatter(func_format))
+            plt.colorbar(shrink=0.7)
+
+            plt.subplot(2, 2, 2)
+            pow_spec = self.get_power_spectrogram()
+            librosa.display.specshow(pow_spec, sr=self.sr, hop_length=self.hop_length, x_axis="s", y_axis="linear")
+            plt.title("Power Spectrogram")
+            plt.xlabel("Time/ms")
+            plt.ylabel("Frequency/Hz")
+            plt.gca().xaxis.set_major_formatter(mtick.FuncFormatter(func_format))
+            plt.colorbar(shrink=0.7)
+
+            plt.subplot(2, 2, 3)
+            log_pow_spec = self.get_log_power_spectrogram()
+            librosa.display.specshow(log_pow_spec, sr=self.sr, hop_length=self.hop_length, x_axis="s", y_axis="linear")
+            plt.title("Log-Power Spectrogram")
+            plt.xlabel("Time/ms")
+            plt.ylabel("Frequency/Hz")
+            # plt.gca().xaxis.set_major_formatter(mtick.FuncFormatter(func_format))
+            plt.colorbar(shrink=0.7, format="%+02.0f dB")
+
+            plt.subplot(2, 2, 4)
+            mel_spec = self.get_mel_spectrogram(**kwargs)
+            librosa.display.specshow(mel_spec, sr=self.sr, hop_length=self.hop_length, x_axis="s", y_axis="mel")
+            plt.title("Log-Mel Spectrogram")
+            plt.xlabel("Time/ms")
+            plt.ylabel("Frequency/Hz")
+            plt.gca().xaxis.set_major_formatter(mtick.FuncFormatter(func_format))
+            plt.colorbar(shrink=0.7, format="%+02.0f dB")
+
+        plt.tight_layout()
+        if show:
+            plt.show()
+
+
+class RhythmFeatures:
+    """Rhythmic characteristics"""
+    def __init__(self, input_file, sr=None, frame_len=512, n_fft=None, win_step=2 / 3, window="hamming"):
+        """
+        initialization
+        :param input_file: input audio files
+        :param sr: audio sampling rate
+        :param frame_len: Frame length, default 512 samples (32ms, 16kHz), same as window length
+        :param n_fft:  The length of the FFT window, by default the same as the window length
+        :param win_step: Window shift, default shift 2/3, 512*2/3=341 samples (21ms,16kHz)
+        :param window:  Window type, default Hamming window
+        """
+        self.input_file = input_file
+        self.frame_len = frame_len  
+        self.wave_data, self.sr = librosa.load(self.input_file, sr=sr)
+        self.window_len = frame_len  
+        if n_fft is None:
+            self.fft_num = self.window_len 
+        else:
+            self.fft_num = n_fft
+        self.win_step = win_step
+        self.hop_length = round(self.window_len * win_step) 
+        self.window = window
+
+    def lld(self, **kwargs):
+        """
+        LLDs（low level descriptors）: Some low-level features of manual design
+        LLDs are generally computed on a frame of FRAME speech and are used to represent the features of a frame of speech
+        :param kwargs: activity_detect paras
+        :return: turbid tone (1, n), light tone segment (1, 2*n), effective speech segment duration (1, n), unit ms,numpy.uint32
+                fundamental frequency F0, unit Hz, first-order, second-order difference (1, number of non-0 elements after extraction by column straightening, >= n_frames),numpy.float32
+                Logarithmic energy value, first-order, second-order difference (1, n_frames),numpy.float32
+                Short-time energy, first-order, second-order difference (1, no additive window n_frames),numpy.float64
+                trans-zero rate, unit times,uint32, first-order, second-order difference (1, no window n_frames),numpy.float64
+                Sound pressure level in dB, first-order, second-order difference (1, no window n_frames),numpy.float64
+        """
+        # duration_voiced, duration_unvoiced, duration_all = self.duration(**kwargs)
+        # f0, mag = self.pitch()
+        # f0 = f0.T[np.nonzero(f0.T)]  
+        # f0_de = librosa.feature.delta(f0, width=3)
+        # f0_de2 = librosa.feature.delta(f0, width=3, order=2)
+        energy = np.log(self.energy())
+        energy_de = librosa.feature.delta(energy, width=3)
+        energy_de2 = librosa.feature.delta(energy, width=3, order=2)
+        ste = self.short_time_energy()
+        ste_de = librosa.feature.delta(ste, width=3)
+        ste_de2 = librosa.feature.delta(ste, width=3, order=2)
+        zcr = self.zero_crossing_rate()
+        zcr_de = librosa.feature.delta(zcr, width=3)
+        zcr_de2 = librosa.feature.delta(zcr, width=3, order=2)
+        spl = self.intensity()
+        spl_de = librosa.feature.delta(spl, width=3)
+        spl_de2 = librosa.feature.delta(spl, width=3, order=2)
+        return (energy, energy_de, energy_de2,
+                ste, ste_de, ste_de2, zcr, zcr_de, zcr_de2, spl, spl_de, spl_de2)
+
+    def hsf(self, **kwargs):
+        """
+        HSFs（high level statistics functions): Features obtained by doing some statistics on the basis of LLDs, such as the mean, the most value, etc.
+        HSFs are statistics of multiple frames of speech on a segment of speech utterance and are used to represent the features of a utterance.
+        :param kwargs: lld para:activity_detect para
+        :return: 1*120-dimensional HSFs features,numpy.float64: min/max/polar/mean/standard deviation of turbulence/light/valid speech segment duration (dimensions 0-14).
+                 min/max/extreme/mean/standard deviation/skewness/kurtosis of F0/F0_de/F0_de2 (dimensions 15-35).
+                 min/max/extreme/mean/standard deviation/skewness/kurtosis of energy/energy_de/energy_de2 (dimensions 36-56).
+                 min/max/polar/mean/standard deviation/skewness/kurtosis of ste/ste_de/ste_de2 (dimensions 57-77).
+                 min/max/extreme/mean/standard deviation/skewness/kurtosis of zcr/zcr_de/zcr_de2 (dimensions 78-98).
+                 min/max/extreme/mean/standard deviation/skewness/kurtosis of spl/spl_de/spl_de2 (dimensions 99-119)
+        """
+        llds = self.lld(**kwargs)
+        hsfs = []
+        for i in range(len(llds)):
+            hsfs = np.append(hsfs, [np.min(llds[i]), np.max(llds[i]),
+                                    np.ptp(llds[i]), np.mean(llds[i]), np.std(llds[i])])
+            if i > 2:  # The first 3 are duration, and their skewness and kurtosis are not calculated
+                hsfs = np.append(hsfs, [skew(llds[i]), kurtosis(llds[i])])
+        return hsfs
+
+    def short_time_energy(self):
+        """
+        Calculate the short-time energy of speech: the sum of squares of all speech signals in each frame
+        :return:  list of short-time energy of speech (value range 0 - sum of squared energy after normalization per frame, here the frame length is 512, then the maximum value is 512).
+        np.ndarray[shape=(1，n_frames with no added window and a frame shift of 0), dtype=float64]
+        """
+        energy = []  
+        energy_sum_per_frame = 0 
+        for i in range(len(self.wave_data)): 
+            energy_sum_per_frame += self.wave_data[i] ** 2  
+            if (i + 1) % self.frame_len == 0: 
+                energy.append(energy_sum_per_frame) 
+                energy_sum_per_frame = 0  
+            elif i == len(self.wave_data) - 1:  
+                energy.append(energy_sum_per_frame)  
+        energy = np.array(energy)
+        energy = np.where(energy == 0, np.finfo(np.float64).eps, energy)  # Avoid energy values of 0 to prevent subsequent logging errors (eps is to take the non-negative minimum value)
+        return energy
+
+    def zero_crossing_rate(self):
+        """
+        Calculate the speech short time over zero rate: the number of times per unit time (per frame) across the horizontal axis (over zero)
+        :return: List of over-zero rate counts per frame, np.ndarray[shape=(1, no add window, n_frames with frame shift of 0), dtype=uint32]
+        """
+        zcr = [] 
+        counting_sum_per_frame = 0 
+        for i in range(len(self.wave_data)):  
+            if i % self.frame_len == 0: 
+                continue
+            if self.wave_data[i] * self.wave_data[i - 1] < 0:  
+                counting_sum_per_frame += 1 
+            if (i + 1) % self.frame_len == 0:  
+                zcr.append(counting_sum_per_frame)  
+                counting_sum_per_frame = 0  
+            elif i == len(self.wave_data) - 1: 
+                zcr.append(counting_sum_per_frame)  
+        return np.array(zcr, dtype=np.uint32)
+
+    def energy(self):
+        """
+        The sum of the squared amplitudes of all sampling points in each frame is used as the energy value
+        :return: energy np.ndarray[shape=(1，n_frames), dtype=float64]
+        """
+        mag_spec = np.abs(librosa.stft(self.wave_data, n_fft=self.fft_num, hop_length=self.hop_length,
+                                       win_length=self.frame_len, window=self.window))
+        pow_spec = np.square(mag_spec)
+        energy = np.sum(pow_spec, axis=0)
+        energy = np.where(energy == 0, np.finfo(np.float64).eps, energy) 
+        return energy
+
+    def intensity(self):
+        """
+        Calculate the sound intensity, expressed as sound pressure level: Sound Pressure Level (SPL) per frame of speech in air, in dB
+        Formula: 20*lg(P/Pref), P is the sound pressure (Pa), Pref is the reference pressure (hearing threshold pressure), generally 2.0*10-5 Pa
+        Here P is identified as the amplitude of the sound: find the mean of all amplitude squared and squared for each frame, divide by Pref squared, and then take 10 times lg
+        :return: intensuty, dB，np.ndarray[shape=(1，n_frames with no added window and a frame shift of 0), dtype=float64]
+        """
+        p0 = 2.0e-5  # auditory threshold pressure: 2.0*10-5 Pa
+        e = self.short_time_energy()
+        spl = 10 * np.log10(1 / (np.power(p0, 2) * self.frame_len) * e)
+        return spl
+
+    def duration(self, **kwargs):
+        """
+        Duration: the duration of the turbid and light segments, the duration of the effective voice segment, an effective voice segment consists of the turbid segment + the light segments on both sides of the turbid segment
+        :param kwargs: activity_detect para
+        :return: np.ndarray[dtype=uint32],voiced consonant shape=(1，n)、Light sectionshape=(1，2*n)、List of valid voice segment durations shape=(1，n)，Unit: ms
+        """
+        wav_dat_split_f, wav_dat_split, voiced_f, unvoiced_f = self.activity_detect(**kwargs)  
+        duration_voiced = [] 
+        duration_unvoiced = [] 
+        duration_all = [] 
+        if np.array(voiced_f).size > 1: 
+            for voiced in voiced_f: 
+                duration_voiced.append(round((voiced[1] - voiced[0] + 1) * self.frame_len / self.sr * 1000))
+        else: 
+            duration_voiced.append(round(self.frame_len / self.sr * 1000))
+        for unvoiced in unvoiced_f: 
+            duration_unvoiced.append(round((unvoiced[1] - unvoiced[0]) * self.frame_len / self.sr * 1000))
+        if len(duration_unvoiced) <= 1:
+            duration_unvoiced.append(0)
+        for i in range(len(duration_voiced)):  #
+            duration_all.append(duration_unvoiced[i * 2] + duration_voiced[i] + duration_unvoiced[i * 2 + 1])
+        return (np.array(duration_voiced, dtype=np.uint32), np.array(duration_unvoiced, dtype=np.uint32),
+                np.array(duration_all, dtype=np.uint32))
+
+    def pitch(self, ts_mag=0.25):
+        """
+        Get the pitch of each frame, i.e., the fundamental frequency, which should include the fundamental frequency and each harmonic here, 
+        the smallest being the fundamental frequency (the first harmonic), and the others in order, the second and third... Harmonics
+        Each harmonic is equal to the corresponding multiple of the fundamental frequency, so the fundamental frequency is also equal to each harmonic divided 
+        by the corresponding number of times, or to be more precise, the sum of all harmonics divided by the sum of the number of harmonics
+        :param ts_mag: Magnitude multiplication factor threshold >0，> np.average(np.nonzero(magnitudes)) * ts_mag is considered valid for the corresponding pitch, default 0.25
+        :return: Amplitude of the fundamental frequency and its corresponding peaks per frame (>0)，
+                 np.ndarray[shape=(1 + n_fft/2，n_frames), dtype=float32]，（257，total sampling points/(512*2/3)+1）
+        """
+        mag_spec = np.abs(librosa.stft(self.wave_data, n_fft=self.fft_num, hop_length=self.hop_length,
+                                       win_length=self.frame_len, window=self.window))
+        # pitches:shape=(d,t)  magnitudes:shape=(d.t), Where d is the subset of FFT bins within fmin and fmax.
+        # pitches[f,t] contains instantaneous frequency at bin f, time t
+        # magnitudes[f,t] contains the corresponding magnitudes.
+
+        pitches, magnitudes = librosa.piptrack(S=mag_spec, sr=self.sr, threshold=1.0, ref=np.mean,
+                                               fmin=50, fmax=500)  # The maximum possible range of normal human speech fundamental frequency 50-500Hz
+        ts = np.average(magnitudes[np.nonzero(magnitudes)]) * ts_mag
+        pit_likely = pitches
+        mag_likely = magnitudes
+        pit_likely[magnitudes < ts] = 0
+        mag_likely[magnitudes < ts] = 0
+        return pit_likely, mag_likely
+
+    def activity_detect(self, min_interval=15, e_low_multifactor=1.0, zcr_multifactor=1.0, pt=False):
+        """
+        Endpoint detection using short time energy, short time past zero rate, and double threshold method
+        :param min_interval: inimum turbulence interval, default 15 frames 
+        :param e_low_multifactor: Energy low threshold multiplication factor, default 1.0
+        :param zcr_multifactor: Over-zero rate threshold multiplication factor, default 1.0
+        :param pt: Output print flag bit, default is False
+        :return: All valid speech segments: segmented by frame (list,n*2), segmented by amplitude of all samples (np.ndarray[shape=(n, number of samples), dtype=float32]), 
+                 muffled segments (list,n*2), light segments (list,n*2)
+        """
+        ste = self.short_time_energy()
+        zcr = self.zero_crossing_rate()
+        energy_average = sum(ste) / len(ste)  
+        energy_high = energy_average / 4  
+        energy_low = (sum(ste[:5]) / 5 + energy_high / 5) * e_low_multifactor  
+        zcr_threshold = sum(zcr) / len(zcr) * zcr_multifactor  
+        voiced_sound = [] 
+        voiced_sound_added = []  
+        wave_detected = []  
+        
+        add_flag = True 
+        for i in range(len(ste)):  
+            if len(voiced_sound) == 0 and add_flag and ste[i] >= energy_high: 
+                voiced_sound.append(i)  
+                add_flag = False 
+            if (not add_flag) and ste[i] < energy_high: 
+                if i - voiced_sound[-1] <= 2:  
+                    voiced_sound = voiced_sound[:-1]  
+                else: 
+                    voiced_sound.append(i)
+                add_flag = True  
+          
+            elif add_flag and ste[i] >= energy_high and i - voiced_sound[-1] > min_interval:
+                voiced_sound.append(i)  
+                add_flag = False 
+            elif add_flag and ste[i] >= energy_high and i - voiced_sound[-1] <= min_interval:
+                voiced_sound = voiced_sound[:-1]  
+                add_flag = False  
+            if (i == len(ste) - 1) and (len(voiced_sound) % 2 == 1):  
+                if i - voiced_sound[-1] <= 2: 
+                    voiced_sound = voiced_sound[:-1]  
+                else:  
+                    voiced_sound.append(i)
+        _print(pt, "High energy threshold:{}，voiced consonant segment:{}".format(energy_high, voiced_sound))
+        
+        for j in range(len(voiced_sound)): 
+            i_minus_flag = False  
+            i = voiced_sound[j]  
+            if j % 2 == 1:  
+                while i < len(ste) and ste[i] >= energy_low: 
+                    i += 1  
+                voiced_sound_added.append(i) 
+            else: 
+                while i > 0 and ste[i] >= energy_low: 
+                    i -= 1 
+                    i_minus_flag = True  
+                if i_minus_flag: 
+                    voiced_sound_added.append(i + 1)
+                else:
+                    voiced_sound_added.append(i)
+        _print(pt, "Low energy threshold:{}，voiced consonant extend:{}".format(energy_low, voiced_sound_added))
+
+        for j in range(len(voiced_sound_added)): 
+            i_minus_flag = False 
+            i = voiced_sound_added[j] 
+            if j % 2 == 1:  
+                while i < len(zcr) and zcr[i] >= zcr_threshold: 
+                    i += 1 
+                wave_detected.append(i)  
+            else:  
+                while i > 0 and zcr[i] >= zcr_threshold:
+                    i -= 1 
+                    i_minus_flag = True  #
+                if i_minus_flag: 
+                    wave_detected.append(i + 1)
+                else:
+                    wave_detected.append(i)
+        _print(pt, "Over-zero rate threshold:{}，After the light section is added:{}".format(zcr_threshold, wave_detected))
+        wave_data_detected_frame = []  
+        for index in range(len(wave_detected)):
+            if index % 2 == 0:  
+                wave_data_detected_frame.append(wave_detected[index:index + 2])
+            else:
+                continue
+        _print(pt, "Total {} segments of speech after splitting，Split by frame as {}".format(len(wave_data_detected_frame), wave_data_detected_frame))
+        wave_data_detected = []  
+        for index in wave_data_detected_frame:
+            try:
+                wave_data_detected.append(self.wave_data[index[0] * int(self.frame_len):
+                                                         index[1] * int(self.frame_len)])
+            except IndexError:
+                wave_data_detected.append(self.wave_data[index[0] * int(self.frame_len):-1])
+        _print(pt, Total {} segments of speech after splitting，Split by the amplitude of all sampling points as {}".format(len(wave_data_detected), wave_data_detected))
+        if np.array(voiced_sound_added).size > 1: 
+            voiced_frame = np.array(voiced_sound_added).reshape((-1, 2)).tolist()  
+        else: 
+            voiced_frame = np.array(voiced_sound_added).tolist()
+        unvoiced_frame = [] 
+        for i in range(len(wave_detected)):  
+            if wave_detected[i] < voiced_sound_added[i]:
+                unvoiced_frame.append([wave_detected[i], voiced_sound_added[i]])
+            elif wave_detected[i] > voiced_sound_added[i]:
+                unvoiced_frame.append([voiced_sound_added[i], wave_detected[i]])
+            else:
+                unvoiced_frame.append([0, 0])
+        return wave_data_detected_frame, wave_data_detected, voiced_frame, unvoiced_frame
+
+    def plot(self, energy="ste", show=True):
+        """
+        Plot speech waveform curves and (short time) energy and over zero rate curves superimposed, 
+        log power spectrum and fundamental frequency, sound pressure level curves superimposed
+        :param energy: "ste" Short-term energy，"energy"，default:"ste"
+        :param show: display graphs
+        :return: None
+        """
+        plt.figure(figsize=(8, 6))
+        wave_ax = host_subplot(211, axes_class=AA.Axes)  # type:AA.Axes
+        wave_ax.set_title("Wave Form")
+        aa = wave_ax.axis["left"]  # type:AA.axis_artist.AxisArtist
+        aa.line.set_color("b")
+        aa.major_ticks.set_color("b")
+        aa.major_ticklabels.set_color("b")
+        wave_ax.set_xticks([])
+        audio_total_time = int(len(self.wave_data) / self.sr * 1000)  
+        wave_ax.set_xlim(0, audio_total_time)
+        wave_ax.set_ylabel("Normalized Amplitude", c="b")
+        wave_ax.set_ylim(-1, 1)
+        x = np.linspace(0, audio_total_time, len(self.wave_data))  
+        wave_ax.plot(x, self.wave_data, c="b", lw=1, label="wave curve")  
+        wave_ax.axhline(y=0, c="pink", ls=":", lw=1) 
+        if energy == "ste":
+            e = self.short_time_energy()
+        elif energy == "energy":
+            e = self.energy()
+        else:
+            raise ValueError("Incorrect energy type parameter input, choose from 'ste' or 'energy'.")
+        e_ax = wave_ax.twinx()  # type:AA.Axes 
+        aa = e_ax.axis["right"]  # type:AA.axis_artist.AxisArtist
+        aa.toggle(all=True)
+        aa.line.set_color("r")
+        aa.major_ticks.set_color("r")
+        aa.major_ticklabels.set_color("r")
+        e_ax.set_ylabel("Energy", c="r")
+        e_ax.set_ylim(0, np.max(e))
+        x = np.linspace(self.frame_len/self.sr*1000, audio_total_time, len(e)) 
+        x = np.append(0, x) 
+        e = np.append(0, e)
+        if energy == "ste":
+            e_ax.plot(x, e, c="r", lw=1.5, label="short time energy")
+        else:
+            e_ax.plot(x, e, c="r", lw=1.5, label="energy")
+        zcr = self.zero_crossing_rate()
+        zcr_ax = wave_ax.twinx()  # type:AA.Axes
+        zcr_ax.axis["right"] = zcr_ax.get_grid_helper().new_fixed_axis(loc="right", axes=zcr_ax, offset=(45, 0))
+        aa = zcr_ax.axis["right"]  # type:AA.axis_artist.AxisArtist
+        aa.toggle(all=True)
+        aa.line.set_color("g")
+        aa.major_ticks.set_color("g")
+        aa.major_ticklabels.set_color("g")
+        zcr_ax.set_ylabel("Times of Zero Crossing", c="g")
+        zcr_ax.set_ylim(0, np.max(zcr))
+        x = np.linspace(self.frame_len / self.sr * 1000, audio_total_time, len(zcr)) 
+        x = np.append(0, x)
+        zcr = np.append(0, zcr)
+        zcr_ax.plot(x, zcr, c="g", lw=1.5, label="zero crossing rate")
+        wave_ax.legend(prop={'family': 'Times New Roman', 'size': 10}, loc="upper right",
+                       framealpha=0.5, ncol=3, handletextpad=0.2, columnspacing=0.7)
+
+        spec = Spectrogram(self.input_file, self.sr, self.frame_len, self.fft_num, self.win_step, self.window, 0)
+        log_power_spec = librosa.amplitude_to_db(spec.get_magnitude_spectrogram(), ref=np.max)
+        log_power_spec_ax = host_subplot(212, axes_class=AA.Axes)  # type:AA.Axes
+        log_power_spec_ax.set_title("Pitches on Log-Power Spectrogram")
+        librosa.display.specshow(log_power_spec[:, 1:], cmap="gray_r", sr=self.sr,
+                                 hop_length=self.hop_length, x_axis="s", y_axis="linear")
+        log_power_spec_ax.set_xlabel("Time/ms")
+        log_power_spec_ax.set_ylabel("Frequency/Hz")
+        log_power_spec_ax.xaxis.set_major_formatter(mtick.FuncFormatter(func_format))
+
+        pitches, mags = self.pitch()
+        f0_likely = [] 
+        for i in range(pitches.shape[1]): 
+            try:
+                f0_likely.append(np.min(pitches[np.nonzero(pitches[:, i]), i]))
+            except ValueError:
+                f0_likely.append(np.nan)  
+        f0_all = np.array(f0_likely)
+        x = np.linspace(0.5 * self.hop_length / self.sr, audio_total_time / 1000, f0_all.size)
+        y = f0_all
+        f0_all_ax = log_power_spec_ax.twinx()  # type:AA.Axes  
+        aa = f0_all_ax.axis["right"]  # type:AA.axis_artist.AxisArtist
+        aa.toggle(all=True)
+        aa.line.set_color("r")
+        aa.major_ticks.set_color("r")
+        aa.major_ticklabels.set_color("r")
+        f0_all_ax.set_ylabel("Pitches/Hz", c="r")
+        f0_all_ax.set_ylim(50, 500)
+        f0_all_ax.scatter(x, y, s=10, c="r", label="F0")
+
+        spl = self.intensity()
+        x = np.linspace(0.5 * self.frame_len / self.sr, audio_total_time / 1000, spl.size)
+        y = spl
+        spl_ax = log_power_spec_ax.twinx()  # type:AA.Axes 
+        spl_ax.axis["right"] = spl_ax.get_grid_helper().new_fixed_axis(loc="right", axes=spl_ax, offset=(45, 0))
+        aa = spl_ax.axis["right"]  # type:AA.axis_artist.AxisArtist
+        aa.toggle(all=True)
+        aa.line.set_color("g")
+        aa.major_ticks.set_color("g")
+        aa.major_ticklabels.set_color("g")
+        spl_ax.set_ylabel("Intensity(SPL)/dB", c="g")
+        spl_ax.set_ylim(30, 100)
+        spl_ax.plot(x, y, "g", lw=1.5, label="SPL")
+        plt.legend(prop={'family': 'Times New Roman', 'size': 10}, loc="upper right",
+                   framealpha=0.5, ncol=3, handletextpad=0.2, columnspacing=0.7)
+
+        plt.tight_layout()
+        if show:
+            plt.show()
+
+
+class SpectrumFeatures:
+    """Spectrum-based correlation features"""
+    def __init__(self, input_file, sr=None, frame_len=512, n_fft=None, win_step=2 / 3, window="hamming", preemph=0.97):
+        self.input_file = input_file
+        self.frame_len = frame_len
+        self.spec = Spectrogram(self.input_file, sr, self.frame_len, n_fft, win_step, window, preemph)
+        self.wave_data, self.sr = self.spec.wave_data, self.spec.sr
+        self.rym = RhythmFeatures(self.input_file, sr, self.frame_len, n_fft, win_step, window)
+        self.energy = self.rym.energy()
+
+    def mfcc(self, n_mfcc=13, ceplifter=22, n_mels=26, replace_energy=True):
+        """
+        Get MFCC coefficients
+        :param n_mfcc: Number of MFCCs to get, default 13
+        :param ceplifter: Ascending inverse spectral coefficients, acting on the final inverse spectral coefficients, default 22
+        :param n_mels: The number of filters in the Mel filter bank, default 26
+        :param replace_energy:  Whether to replace the 0th order cepstrum coefficient with the logarithm of the frame energy, default replacement
+        :return: n_mfcc*3-dimensional MFCC features, one MFCC feature vector per column np.ndarray[shape=(n_mfcc*3, n_frames), dtype=float32]
+        """
+        log_mel_spec = self.spec.get_mel_spectrogram(n_mels)  
+
+        mfcc_f = librosa.feature.mfcc(S=log_mel_spec, n_mfcc=n_mfcc, lifter=ceplifter)  
+        if replace_energy:
+            mfcc_f[0, :] = np.log(self.energy) 
+        mfcc_delta = librosa.feature.delta(mfcc_f, width=3)  
+        mfcc_delta2 = librosa.feature.delta(mfcc_f, width=3, order=2) 
+        mfcc_f = np.vstack((mfcc_f, mfcc_delta, mfcc_delta2)) 
+        return mfcc_f
+
+    def plot(self, show=True, **kwargs):
+        mfcc_f = self.mfcc(**kwargs)
+        librosa.display.specshow(mfcc_f, sr=self.sr, x_axis="s")
+        plt.title("MFCC")
+        plt.xlabel("Time/ms")
+        plt.gca().xaxis.set_major_formatter(mtick.FuncFormatter(func_format))
+        plt.colorbar(shrink=0.7)
+
+        plt.tight_layout()
+        if show:
+            plt.show()
+
+
+class QualityFeatures:
+    """Sound quality characteristics (sound quality)"""
+    def __init__(self, input_file, sr=None, frame_len=512, n_fft=None, win_step=2 / 3, window="hamming"):
+ 
+        self.input_file = input_file
+        self.frame_len = frame_len 
+        self.wave_data, self.sr = librosa.load(self.input_file, sr=sr)
+        self.n_fft = n_fft
+        self.window_len = frame_len 
+        self.win_step = win_step
+        self.hop_length = round(self.window_len * win_step)  
+        self.window = window
+
+    def formant(self, ts_e=0.01, ts_f_d=200, ts_b_u=2000):
+        """
+        LPC rooting method to estimate the center frequencies of the first three resonance peaks of each frame and their bandwidths
+        :param ts_e: Energy threshold: default when the energy exceeds 0.01 it is considered that a resonance peak may occur
+        :param ts_f_d: Resonance peak center frequency lower threshold: default when the center frequency exceeds 200, 
+                       less than half of the sampling frequency when the resonance peak is considered likely to occur
+        :param ts_b_u: Resonance peak bandwidth on the threshold: default below 2000 when the resonance peak is considered likely to occur
+        :return: F1/F2/F3, B1/B2/B3, one frame per column F1/F2/F3 or B1/B2/B3, np.ndarray[shape=(3, n_frames), dtype=float64]
+        """
+        _data = lfilter([1., 0.83], [1], self.wave_data)  
+        inc_frame = self.hop_length  
+        n_frame = int(np.ceil(len(_data) / inc_frame)) 
+        n_pad = n_frame * self.window_len - len(_data) 
+        _data = np.append(_data, np.zeros(n_pad))  
+        win = get_window(self.window, self.window_len, fftbins=False)  
+        formant_frq = []  
+        formant_bw = []  
+        rym = RhythmFeatures(self.input_file, self.sr, self.frame_len, self.n_fft, self.win_step, self.window)
+        e = rym.energy() 
+        e = e / np.max(e) 
+        for i in range(n_frame):
+            f_i = _data[i * inc_frame:i * inc_frame + self.window_len]  
+            if np.all(f_i == 0):  
+                f_i[0] = np.finfo(np.float64).eps
+            f_i_win = f_i * win  
+            a = librosa.lpc(f_i_win, 8)  # Obtain the LPC linear prediction error coefficient, 
+                                         # i.e., the filter denominator polynomial of order Expected resonance peak number 3 * 2 + 2, i.e., want to obtain F1-3
+            rts = np.roots(a)  
+            rts = np.array([r for r in rts if np.imag(r) >= 0]) 
+            rts = np.where(rts == 0, np.finfo(np.float64).eps, rts)  
+            ang = np.arctan2(np.imag(rts), np.real(rts))  
+            # F(i) = ang(i)/(2*pi*T) = ang(i)*f/(2*pi)
+            frq = ang * (self.sr / (2 * np.pi))  # Convert angular frequencies in rad/sample expressed in angles to hertz samples/s
+            indices = np.argsort(frq) 
+            frequencies = frq[indices] 
+            # The bandwidth of the resonance peak is represented by the distance from the zero of the prediction polynomial to the unit circle: 
+            # B(i) = -ln(r(i))/(pi*T) = -ln(abs(rts[i]))*f/pi
+            bandwidths = -(self.sr / np.pi) * np.log(np.abs(rts[indices]))
+            formant_f = []  # F1/F2/F3
+            formant_b = []  # B1/B2/B3
+            if e[i] > ts_e: 
+                # The resonant peak frequency is greater than ts_f_d less than self.sr/2 Hz, and the bandwidth is less than ts_b_u Hz to determine the resonant peak
+                for j in range(len(frequencies)):
+                    if (ts_f_d < frequencies[j] < self.sr/2) and (bandwidths[j] < ts_b_u):
+                        formant_f.append(frequencies[j])
+                        formant_b.append(bandwidths[j])
+
+                if len(formant_f) < 3: 
+                    formant_f += ([np.nan] * (3 - len(formant_f)))
+                else: 
+                    formant_f = formant_f[0:3]
+                formant_frq.append(np.array(formant_f)) 
+                if len(formant_b) < 3:
+                    formant_b += ([np.nan] * (3 - len(formant_b)))
+                else:
+                    formant_b = formant_b[0:3]
+                formant_bw.append(np.array(formant_b))
+            else: 
+                formant_frq.append(np.array([np.nan, np.nan, np.nan]))
+                formant_bw.append(np.array([np.nan, np.nan, np.nan]))
+        formant_frq = np.array(formant_frq).T
+        formant_bw = np.array(formant_bw).T
+        # print(formant_frq.shape, np.nanmean(formant_frq, axis=1))
+        # print(formant_bw.shape, np.nanmean(formant_bw, axis=1))
+        return formant_frq, formant_bw
+
+    def jitter(self):
+        """
+        Calculated frequency perturbation: physical quantity that describes the change in fundamental frequency of sound waves between adjacent cycles,
+        mainly reflecting the degree of rough sound, followed by the degree of hoarse sound
+        The absolute value of the difference between adjacent fundamental frequency periods is averaged (absolute frequency perturbation); 
+        the absolute value of the difference between adjacent fundamental frequency periods is averaged and divided by the average period (relative frequency perturbation)
+                                                   N-1
+        Absolute frequency perturbation(s)：Jitter(absolute) = 1/(N-1) * ∑|T(i) - T(i+1)|
+                                                   i=1             N
+        Relative frequency perturbation(%)：Jitter(relative) = Jitter(absolute) / (1/N * ∑T(i))
+                                                                   i=1
+        where T(i) is the i-th F0 cycle and N is the total number of F0 cycles
+        refer to ：Farrús, Mireia, Javier Hernando, and Pascual Ejarque. "Jitter and shimmer measurements for speaker
+        recognition." Eighth annual conference of the international speech communication association. 2007.
+        :return: Jitter(absolute)，s、Jitter(relative)，
+                numpy.float64
+        """
+        rym = RhythmFeatures(self.input_file, self.sr, self.frame_len, self.n_fft, self.win_step, self.window)
+        pitches, mags = rym.pitch()
+        f0_all = pitches.T[pitches.T > 0] 
+        jitter_sum = 0
+        jitter_absolute = 0
+        for i in range(len(f0_all)):  
+            if i < len(f0_all) - 1:
+                jitter_sum += np.abs(1 / f0_all[i] - 1 / f0_all[i + 1])
+            if len(f0_all) - 1 == 0:
+                jitter_absolute = jitter_sum
+            else:
+                jitter_absolute = jitter_sum / (len(f0_all) - 1)  
+        period_avg = np.average(1 / f0_all) 
+        jitter_relative = jitter_absolute / period_avg 
+        return jitter_absolute, jitter_relative
+
+    def shimmer(self):
+        """
+        Calculated amplitude perturbation: a physical quantity that describes the change in amplitude of sound waves between adjacent cycles,
+        mainly reflecting the degree of hissing sound
+        Absolute value average of 20 times the amplitude ratio between adjacent fundamental frequency periods with a base log of 10 (absolute amplitude perturbation dB);
+        absolute value average of the difference between adjacent amplitudes divided by the average amplitude (relative amplitude perturbation)
+                                                     N-1
+        Absolute amplitude perturbation(dB)：shimmer(absolute) = 1/(N-1) * ∑|20 * lg(A(i+1) / A(i))|
+                                                     i=1
+                                                     N-1                        N
+        Relative amplitude perturbation(%)：shimmer(relative) = (1/(N-1) * ∑|A(i) - A(i+1)|) / (1/N * ∑A(i))
+                                                     i=1                        i=1
+        where A(i) is the i-th acoustic wave amplitude, N is the total number of F0 cycles, which is the same as the amplitude number
+        refer to：Farrús, Mireia, Javier Hernando, and Pascual Ejarque. "Jitter and shimmer measurements for speaker
+        recognition." Eighth annual conference of the international speech communication association. 2007.
+        :return: shimmer(absolute)，dB、shimmer(relative)，
+                numpy.float64
+        """
+        rym = RhythmFeatures(self.input_file, self.sr, self.frame_len, self.n_fft, self.win_step, self.window)
+        pitches, mags = rym.pitch()
+        mags_all = mags.T[mags.T > 0] 
+        shimmer_sum = 0
+        shimmer_sum_db = 0
+        shimmer_absolute, shimmer_absolute_db = 0, 0
+        for i in range(len(mags_all)): 
+            if i < len(mags_all) - 1:
+                shimmer_sum += np.abs(mags_all[i] - mags_all[i + 1])
+                shimmer_sum_db += np.abs(20 * np.log10(mags_all[i + 1] / mags_all[i]))
+            if len(mags_all) - 1 == 0:
+                shimmer_absolute = shimmer_sum
+                shimmer_absolute_db = shimmer_sum
+            else:
+                shimmer_absolute = shimmer_sum / (len(mags_all) - 1)  
+                shimmer_absolute_db = shimmer_sum / (len(mags_all) - 1)  
+        period_avg = np.average(mags_all)  
+        shimmer_relative = shimmer_absolute / period_avg 
+        return shimmer_absolute_db, shimmer_relative
+
+
+class VAD:
+    def __init__(self, wav_file, frame_len=400, min_interval=15, e_low_multifactor=1.0, zcr_multifactor=1.0, pt=True):
+
+        rf = RhythmFeatures(wav_file, None, frame_len)
+        self.wave_data = rf.wave_data 
+        self.sampling_rate = rf.sr
+        self.frame_len_samples = frame_len 
+        self.frame_len_time = round(self.frame_len_samples * 1000 / self.sampling_rate)  
+        self.energy = rf.short_time_energy() 
+        self.zcr = rf.zero_crossing_rate()  
+
+        self.wav_dat_split_f, self.wav_dat_split, self.voiced_f, self.unvoiced_f = \
+            rf.activity_detect(min_interval, e_low_multifactor, zcr_multifactor, pt)
+
+        if len(self.wav_dat_split_f[-1]) > 1:  
+            self.wav_dat_utterance = self.wave_data[self.wav_dat_split_f[0][0] * int(self.frame_len_samples):
+                                                    self.wav_dat_split_f[-1][1] * int(self.frame_len_samples)]
+        else: 
+            self.wav_dat_utterance = self.wave_data[self.wav_dat_split_f[0][0] * int(self.frame_len_samples):]
+
+
+def my_acoustic_features(input_file, sr=None, frame_len=512, n_fft=None, win_step=2 / 3, window="hamming",
+                         preemph=0.97, **kwargs):
+    """
+    Mainly using various acoustic features extracted by librosa,HSFs
+    
+    :return: 1*523-dimensional HSFs features,numpy.float64: Rhythmology features: 120-dimensional HSFs (dimensions 0-119, see RhythmFeatures class hsf method for details).
+             Spectral-based correlation features (39*7 dimensions): min/max/polar/mean/standard deviation/skewness/kurtosis of 39-dimensional MFCC features (dimensions 120-392).
+             Sound quality features ((3*6)*7+4 dimensions): min/max/polar/mean/standard deviation/skewness/kurtosis of 3 resonant peak center frequencies F1/F2/F3 (dimensions 393-413).
+             Minimum/maximum/polar/mean/standard deviation/skewness/kurtosis of F1/F2/F3 first-order differences (dimensions 414-434).
+             minimum/maximum/polar/mean/standard deviation/skewness/kurtosis of the F1/F2/F3 second-order difference (dimensions 435-455).
+             Minimum/maximum/extreme/mean/standard deviation/skewness/kurtosis of the bandwidth B1/B2/B3 corresponding to the central frequencies of the 3 resonance peaks (dimensions 456-476).
+             Minimum/maximum/extreme/mean/standard deviation/skewness/kurtosis of B1/B2/B3 first-order differences (dimensions 477-497).
+             Minimum/maximum/polarity/mean/standard deviation/skewness/kurtosis of B1/B2/B3 second-order differences (dimensions 498-518).
+             absolute/relative frequency perturbation, absolute/relative amplitude perturbation (dimensions 519-522)
+
+Translated with www.DeepL.com/Translator (free version)
+    """
+    my_features = []
+
+    rhythm_features = RhythmFeatures(input_file, sr, frame_len, n_fft, win_step, window)
+    my_features = np.append(my_features, rhythm_features.hsf(**kwargs))  # 120-dimensional HSFs
+
+    spectrum_features = SpectrumFeatures(input_file, sr, frame_len, n_fft, win_step, window, preemph)
+    mfcc = spectrum_features.mfcc(n_mfcc=13, ceplifter=22, n_mels=26, replace_energy=True)  # 39-dimensional MFCC
+    lld_mfcc = [i for i in mfcc]  
+
+    quality_features = QualityFeatures(input_file, sr, frame_len, n_fft, win_step, window)
+    fmt_frq, fmt_bw = quality_features.formant(ts_e=0.01, ts_f_d=200, ts_b_u=2000)  
+
+    fmt_f1, fmt_b1 = fmt_frq[0, :][~np.isnan(fmt_frq[0, :])], fmt_bw[0, :][~np.isnan(fmt_frq[0, :])]
+    fmt_f1_d, fmt_b1_d = librosa.feature.delta(fmt_f1, width=3), librosa.feature.delta(fmt_b1, width=3)
+    fmt_f1_d2, fmt_b1_d2 = librosa.feature.delta(fmt_f1, width=3, order=2), librosa.feature.delta(fmt_b1, width=3, order=2)
+
+    fmt_f2, fmt_b2 = fmt_frq[1, :][~np.isnan(fmt_frq[1, :])], fmt_bw[1, :][~np.isnan(fmt_frq[1, :])]
+    fmt_f2_d, fmt_b2_d = librosa.feature.delta(fmt_f2, width=3), librosa.feature.delta(fmt_b2, width=3)
+    fmt_f2_d2, fmt_b2_d2 = librosa.feature.delta(fmt_f2, width=3, order=2), librosa.feature.delta(fmt_b2, width=3,
+                                                                                                  order=2)
+
+    fmt_f3, fmt_b3 = fmt_frq[2, :][~np.isnan(fmt_frq[2, :])], fmt_bw[2, :][~np.isnan(fmt_frq[2, :])]
+    fmt_f3_d, fmt_b3_d = librosa.feature.delta(fmt_f3, width=3), librosa.feature.delta(fmt_b3, width=3)
+    fmt_f3_d2, fmt_b3_d2 = librosa.feature.delta(fmt_f3, width=3, order=2), librosa.feature.delta(fmt_b3, width=3,
+                                                                                                  order=2)
+    jit_abs, jit_rel = quality_features.jitter()  
+    shi_abs, shi_rel = quality_features.shimmer()  
+    lld_fmt = [fmt_f1, fmt_f2, fmt_f3, fmt_f1_d, fmt_f2_d, fmt_f3_d, fmt_f1_d2, fmt_f2_d2, fmt_f3_d2,
+               fmt_b1, fmt_b2, fmt_b3, fmt_b1_d, fmt_b2_d, fmt_b3_d, fmt_b1_d2, fmt_b2_d2, fmt_b3_d2]
+    lld = lld_mfcc + lld_fmt
+    hsf = []
+    for i in range(len(lld)): 
+        hsf = np.append(hsf, [np.min(lld[i]), np.max(lld[i]), np.ptp(lld[i]), np.mean(lld[i]),
+                              np.std(lld[i]), skew(lld[i]), kurtosis(lld[i])])
+    my_features = np.append(my_features, np.append(hsf, [jit_abs, jit_rel, shi_abs, shi_rel])) 
+    return my_features
+
+
+
+    
