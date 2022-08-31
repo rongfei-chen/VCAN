@@ -1,0 +1,82 @@
+import os
+import emd
+import librosa
+import numpy as np
+from vmdpy import VMD
+from File_Saving import write_file, text_save
+from acoustic_feature import RhythmFeatures, QualityFeatures
+from sklearn.cluster import KMeans
+
+
+class EmdDecomposing:
+    def Processing(self, file_path):
+        sig_data, sample_rate = librosa.load(file_path)
+        sig_imf1 = emd.sift.sift(sig_data)
+        sig_imf = sig_imf1.T
+        sig_imf_row, sig_imf_col = sig_imf.shape
+        if sig_imf_row >= 10:
+            sig_imf = sig_imf[0:10,:]
+        else:
+            pass
+        return sig_imf
+
+    def ParaProcessing(self,file_path,k):  # k > 3
+        sig_data, sample_rate = librosa.load(file_path)
+        sig_imf1 = emd.sift.sift(sig_data)
+        sig_imf = sig_imf1.T
+        sig_imf_row, sig_imf_col = sig_imf.shape
+        if sig_imf_row >= k:
+            sig_imf = sig_imf[0:k, :]
+        else:
+            sig_imf = sig_imf
+        return sig_data, sig_imf
+
+    def Cal_contribution(self, imf, orignal_sig):
+        return np.array(imf)/np.array(orignal_sig)
+
+    def Imf_Save(self, sig_imf, wav_path, imf_data_path):
+        imf_col, imf_row = sig_imf.shape
+        for i in range(imf_col):
+            # path = r"D:\code\MSA\Decomposed_file"
+            wav_name = 'imf' + str(i) + '.wav'
+            val_name = 'imf' + str(i) + '.txt'
+            var_name = os.path.join(wav_path, wav_name)
+            var_value = sig_imf[i, :]
+            write_file(var_name, var_value)
+            value_name = os.path.join(imf_data_path, val_name)
+            text_save(value_name, sig_imf)
+
+    def feature(self, path,):
+            rhythm_f = RhythmFeatures(path)
+            (energy, energy_de, energy_de2, ste, ste_de, ste_de2, zcr, zcr_de, zcr_de2, spl, spl_de, spl_de2) = rhythm_f.lld()
+            quality_f = QualityFeatures(path)
+            jitter_absolute, jitter_relative = quality_f.jitter()
+            shimmer_absolute_db, shimmer_relative = quality_f.shimmer()
+            temp_feature = [
+                energy.tolist() + energy_de.tolist() + energy_de2.tolist() + ste.tolist() + ste_de.tolist()
+                + ste_de2.tolist() + zcr.tolist() + zcr_de.tolist() + zcr_de2.tolist() + spl.tolist() +
+                spl_de.tolist() + spl_de2.tolist() + [jitter_absolute] + [jitter_relative] +
+                [shimmer_absolute_db] + [shimmer_relative]]
+            return temp_feature
+
+    def cluster(self, rhythm_feature, feature_size, imf_col, sig_imf, txt_path, index):
+        km = KMeans(n_clusters=3).fit(rhythm_feature)
+        label_pred = km.labels_  # clustering labels
+        #  IMF reconstruction based on clustering results
+        label_pred = np.array(label_pred)
+        class_fea = np.empty([3, feature_size])
+        final_imf = np.empty([3, imf_col])
+        # rhythm_feature = np.array(rhythm_feature)
+        for class_index in range(3):
+            label = np.where(label_pred == class_index)
+            if label:
+                class_fea[class_index,:] = np.mean(rhythm_feature[label], axis=0)
+                final_imf[class_index,:] = np.sum(sig_imf[label], axis=0)
+            temp_name = index.split('.')[:-1]
+            index_name = ''.join(temp_name)
+            imf_name = index_name + '-imf-' + str(class_index) + '.txt'
+            var_name = os.path.join(txt_path, imf_name)
+            text_save(var_name, final_imf)
+        return class_fea, final_imf
+
+ 
