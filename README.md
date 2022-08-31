@@ -41,6 +41,7 @@ You need to declare the related citations if you use the following datasets as b
 
 1. We provide a simple [demo](https://drive.google.com/drive/folders/1NoRldhJbrmzzt7Fnn7rmMT-x42k3ACtY?usp=sharing) of the basic raw data pre-processing so that users can easily adjust the data structure.
 2. The cooperative classifier group mentioned in our paper is consisted of different CNN models, and users can retrieve the source code from the corresponding papers or refer to this [URL](https://github.com/WZMIAOMIAO/deep-learning-for-image-processing).
+3. If you have any questions about using VCAN, please contact me by email (chenrongfei@shu.edu.cn) 
 
 ## citation
 
